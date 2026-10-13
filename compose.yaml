@@ -1,0 +1,51 @@
+services:
+  bridge:
+    build:
+      context: .
+      dockerfile: bridge/Dockerfile
+    ports:
+      - "127.0.0.1:8765:8000"
+    environment:
+      AUTH_MODE: network
+      PI_SERVICE_BASE_URL: http://pi-service:8788/v1
+      PI_SERVICE_MODEL: ${BIFROST_MODEL:-pistache-chat}
+      STT_PROVIDER: bifrost
+      TTS_PROVIDER: bifrost
+      SPEECH_BASE_URL: ${SPEECH_BASE_URL:?Set SPEECH_BASE_URL in .env}
+      SPEECH_API_KEY: ${BIFROST_API_KEY:?Set BIFROST_API_KEY in .env}
+      STT_MODEL: ${STT_MODEL:-openrouter/openai/gpt-transcribe}
+      TTS_MODEL: ${TTS_MODEL:-openrouter/pistache-tts}
+      TTS_VOICE: ${TTS_VOICE:-ff_siwis}
+      MAX_AUDIO_BYTES: "10485760"
+      MAX_AUDIO_SECONDS: "45"
+      MAX_CONCURRENT_TURNS: "2"
+    depends_on:
+      pi-service:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+  pi-service:
+    build:
+      context: ./pi-service
+      dockerfile: Dockerfile
+    expose: ["8788"]
+    environment:
+      PORT: "8788"
+      CONTEXT_DIR: /context
+      REQUIRED_CONTEXT_FILES: SYSTEM.md,SOUL.md,USER.md
+      BIFROST_BASE_URL: ${BIFROST_BASE_URL:?Set BIFROST_BASE_URL in .env}
+      BIFROST_MODEL: ${BIFROST_MODEL:-pistache-chat}
+      BIFROST_API_KEY: ${BIFROST_API_KEY:?Set BIFROST_API_KEY in .env}
+    volumes:
+      - ${CONTEXT_DIR:-./examples/context}:/context:ro
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped

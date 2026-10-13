@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#fff8e9">
+  <meta name="description" content="Une petite aventure avec Pistache.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="/styles.css?v=pistache-20261013">
+  <title>Pistache</title>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topline"><div class="brand-mark" aria-hidden="true">✦</div><div><p class="eyebrow">LA PETITE CABANE</p><h1>Salut&nbsp;!</h1></div><span class="connection-dot online" aria-label="Pistache"></span></header>
+    <section class="scene" aria-label="Pistache"><div class="sky" aria-hidden="true"><span class="star star-one">✦</span><span class="star star-two">✧</span><span class="star star-three">·</span><div class="moon"></div><div class="hill hill-back"></div><div class="hill hill-front"></div><div class="frog"><svg viewBox="0 0 180 150"><ellipse cx="90" cy="118" rx="62" ry="23" fill="#70ad75"/><path d="M38 77Q36 47 58 42Q90 27 122 42Q145 48 142 80L133 112Q91 139 47 112Z" fill="#8ac884"/><ellipse cx="61" cy="40" rx="22" ry="25" fill="#8ac884"/><ellipse cx="119" cy="40" rx="22" ry="25" fill="#8ac884"/><ellipse cx="63" cy="42" rx="12" ry="14" fill="#fff8dc"/><ellipse cx="117" cy="42" rx="12" ry="14" fill="#fff8dc"/><circle cx="65" cy="44" r="5" fill="#283d35"/><circle cx="115" cy="44" r="5" fill="#283d35"/><path d="M69 76Q90 94 111 76" fill="none" stroke="#315940" stroke-width="5" stroke-linecap="round"/></svg><span class="frog-label">Pistache</span></div></div><div class="speech-card"><span class="speech-star" aria-hidden="true">✦</span><p id="statusText">Pistache est là. Écris-lui ou appuie pour parler&nbsp;!</p></div></section>
+    <section class="conversation" id="conversation" aria-live="polite" aria-label="Conversation"></section>
+    <section id="cards" class="cards" aria-live="polite" aria-label="Jeux et découvertes"></section>
+    <section class="interaction" aria-label="Parler avec Pistache">
+      <p id="voiceStatus" class="status" role="status">Appuie pour parler</p>
+      <button id="talk" class="talk-button" type="button" aria-pressed="false"><span class="mic-icon" aria-hidden="true">🎙</span><span id="buttonLabel">Je parle</span></button>
+      <p id="hint" class="hint">Touche pour commencer, puis touche pour terminer.</p>
+      <button id="replay" class="replay-button" type="button" hidden>▶ Écouter</button>
+      <audio id="audio" controls preload="none" hidden aria-label="La réponse de Pistache"></audio>
+    </section>
+    <form id="textForm" class="text-form"><label for="message">Ou écrire à Pistache</label><div class="input-row"><input id="message" name="message" maxlength="1800" minlength="2" autocomplete="off" placeholder="Tape un petit message…" required><button id="send" type="submit">Envoyer</button></div></form>
+    <details id="tools" class="tools" hidden><summary>Pour les parents</summary><div id="tool-list"></div></details>
+    <footer class="footer">La petite cabane · <a href="/setup.html">Réglages adultes</a></footer>
+  </main>
+  <script src="/app.js?v=pistache-20261013" defer></script>
+</body>
+</html>

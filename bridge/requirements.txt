@@ -1,0 +1,12 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+python-multipart>=0.0.20,<1
+httpx>=0.28,<1
+av>=14,<17
+
+# Optional local fallback providers; Bifrost is the configured demo default.
+# Install faster-whisper and edge-tts only when using local speech providers.
+
+# Test dependencies
+pytest>=8,<9
+httpx>=0.28,<1

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#fff8e9"><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><link rel="stylesheet" href="/legacy-styles.css"><link rel="stylesheet" href="/recorder.css"><title>Mes petites phrases</title></head>
+<body class="setup-page"><main class="setup-card recorder-card">
+<nav><a href="/setup.html">← Réglages adultes</a><a href="/">La cabane</a></nav>
+<p class="eyebrow">ENREGISTREMENTS POUR UN ADULTE</p><h1>Mes petites phrases</h1>
+<p class="lead">Enregistre une phrase, écoute-la, puis écris exactement ce qui a été dit. Les pauses ne coupent pas l’enregistrement.</p>
+<p class="warning">Les clips restent sur cet appareil, dans cette application. Ils ne sont pas envoyés à Pistache. Exporte-les pour les conserver : effacer les données du navigateur les supprime.</p>
+<label for="prompt">Phrase proposée ou contexte (facultatif)</label><textarea id="prompt" rows="2" placeholder="Quelle est la plus grosse lune du système solaire ?"></textarea>
+<div class="record-actions"><button id="record" type="button" disabled>Commencer</button><button id="cancel" type="button" hidden>Annuler</button><output id="timer" aria-label="Durée">00:00</output></div>
+<p id="record-status" role="status" aria-live="polite">Ouverture des enregistrements…</p>
+<div class="library-heading"><h2>Mes enregistrements</h2><button id="export" type="button" disabled>Exporter tout (.zip)</button></div>
+<p class="setup-small">L’export contient les fichiers audio originaux et un fichier JSON avec les transcriptions manuelles. Pendant l’enregistrement, garde cette page ouverte. Limite : 5 minutes par clip.</p>
+<section id="clips" aria-label="Enregistrements sauvegardés"></section>
+</main><script src="/recorder.js?v=20261008-recorder" defer></script></body></html>

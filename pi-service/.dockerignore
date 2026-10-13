@@ -1,0 +1,8 @@
+**
+!package.json
+!package-lock.json
+!Dockerfile
+!src/
+!src/core.js
+!src/pi.js
+!src/server.js

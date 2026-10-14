@@ -77,7 +77,7 @@ journal below keeps a record to look back on, without feeding it back into Pi.
 
 ## Pistache, côté parents
 
-Open **Réglages adultes → Pistache, côté parents** (or `/parents.html`).
+Open **Côté parents** from Pistache (or `/parents.html`). Conversations, Profile, Activity and Connection are all in one place. Old `/setup.html` links open the Connection section.
 It shows recent conversations, word/math tools, and how long transcription,
 Pi's reply and speech synthesis took. Failed voice turns keep any transcript and
 reply already produced, with the stage that failed. “Réponse prête” means the

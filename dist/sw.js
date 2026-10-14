@@ -1,6 +1,6 @@
-const CACHE = 'pistache-shell-v12-voice-20261014';
+const CACHE = 'pistache-shell-v13-parents-navigation-20261014';
 const SHELL = [
-  '/', '/index.html', '/setup.html', '/setup.js?v=20261007-tailscale',
+  '/', '/index.html', '/setup.html', '/setup.js?v=parents-navigation-20261014',
   '/legacy-styles.css', '/styles.css?v=pistache-voice-20261014',
   '/app.js?v=pistache-voice-20261014', '/manifest.webmanifest',
   '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'

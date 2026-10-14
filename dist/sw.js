@@ -1,4 +1,4 @@
-const CACHE = 'pistache-shell-v9-pi-demo-20261013';
+const CACHE = 'pistache-shell-v10-parents-20261014';
 const SHELL = [
   '/', '/index.html', '/setup.html', '/setup.js?v=20261007-tailscale', '/recorder.html',
   '/recorder.js?v=20261008-recorder', '/recorder.css', '/legacy-styles.css', '/styles.css?v=pistache-20261013',
@@ -19,7 +19,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
-  if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/parents')) return;
   if (request.mode === 'navigate' && ['/', '/index.html', '/setup.html', '/recorder.html'].includes(url.pathname)) {
     const key = url.pathname === '/' ? '/index.html' : url.pathname;
     event.respondWith(fetch(request).then((response) => {

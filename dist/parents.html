@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fff8e9">
+  <title>Pistache · Côté parents</title>
+  <link rel="stylesheet" href="/parents.css">
+  <script src="/parents.js" defer></script>
+</head>
+<body>
+<main>
+  <header><div><p class="eyebrow">LA PETITE CABANE</p><h1>Pistache, côté parents</h1><p>Les petites discussions, et ce qui se passe derrière.</p></div><a href="/setup.html">← Réglages adultes</a></header>
+  <div class="toolbar"><span id="state" role="status">Ouverture du journal…</span><button id="refresh">Actualiser</button></div>
+  <section class="stats" aria-label="En un coup d’œil"><article><span>Échanges gardés</span><strong id="count">—</strong></article><article><span>Tours interrompus</span><strong id="failed">—</strong></article><article><span>Attente moyenne</span><strong id="average">—</strong></article></section>
+  <nav class="tabs" aria-label="Choisir une vue"><button id="conversation-tab" aria-pressed="true">Conversations</button><button id="health-tab" aria-pressed="false">Fonctionnement</button></nav>
+  <section id="conversation-panel"><p class="note">Pour les messages vocaux, on voit ce que la transcription a entendu. Ça peut différer de ce qui a été dit.</p><div id="sessions"></div></section>
+  <section id="health-panel" hidden><h2>Les étapes d’un échange</h2><p class="note">Transcrire → répondre avec Pi → préparer la voix. « Réponse prête » signifie que le serveur a terminé ; ça ne confirme pas la lecture sur l’appareil.</p><p class="label">Routes configurées actuellement</p><div id="models" class="models"></div><div class="table-wrap"><table><caption>Échanges récents</caption><thead><tr><th>Quand</th><th>Entrée</th><th>Résultat</th><th>Transcription</th><th>Pi</th><th>Voix</th><th>Total</th></tr></thead><tbody id="timings"></tbody></table></div><p class="note">L’attente totale inclut aussi la file d’attente et la préparation de l’enregistrement. Les coûts et tokens ne sont pas disponibles dans cette vue.</p></section>
+  <footer><p id="retention">Le journal reste sur le serveur. Aucun audio n’est conservé.</p><p>Même accès privé que Pistache, sans mot de passe supplémentaire. Une personne qui peut ouvrir le site peut aussi ouvrir ce journal.</p><button id="clear" class="danger">Effacer tout le journal</button><p class="note">Effacer le journal ne réinitialise pas la conversation en cours.</p></footer>
+</main>
+</body>
+</html>

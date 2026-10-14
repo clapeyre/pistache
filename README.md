@@ -73,8 +73,35 @@ example local rather than opening its port to the internet.
 
 `examples/context/` contains a generic persona and profile. Copy those files into
 `local/context/`, edit them, and set `CONTEXT_DIR=./local/context` in `.env`.
-The profile is read-only at runtime. Conversations live in RAM; there’s no persistent
-learning or memory-writing feature yet.
+The profile is read-only at runtime. Pi's conversation context lives in RAM;
+there’s no persistent learning or memory-writing feature yet. The separate parent
+journal below keeps a record to look back on, without feeding it back into Pi.
+
+## Pistache, côté parents
+
+Open **Réglages adultes → Pistache, côté parents** (or `/parents.html`).
+It shows recent conversations, word/math tools, and how long transcription,
+Pi's reply and speech synthesis took. Failed voice turns keep any transcript and
+reply already produced, with the stage that failed. “Réponse prête” means the
+server finished, not that the speaker on your device played it.
+
+The journal stays on your server in SQLite. Compose gives it a persistent
+`parent-journal` volume; native runs use `local/parents.sqlite3`, or set
+`PARENTS_DB_PATH` to another local path. No recordings or generated audio are
+saved in this journal. It keeps up to 1,000 exchanges for 30 days; adjust
+`PARENTS_MAX_TURNS` and `PARENTS_RETENTION_DAYS` in `.env`. Expiry runs when
+the journal is read or a turn is saved. The page shows the latest 200 exchanges.
+
+You can erase a conversation or the whole journal. That removes journal entries,
+including preventing already-running turns from bringing them back; it doesn't
+reset Pi's current conversation or erase copies you made separately. Turn recording
+continues for new conversations. A storage hiccup won't stop the child chatting;
+the parent page will report when the journal can't be read.
+
+There’s no extra parent password: this page uses the same private access as the
+rest of Pistache. Anyone who can reach your private site can read or erase the
+journal, including a child using that site. Keep it behind that private access.
+Text, keys and recordings still stay out of Git; SQLite files are ignored too.
 
 Actual voice turns go to the configured models. The adult recorder page is separate:
 it keeps its clips and manual transcripts in that browser’s IndexedDB until you

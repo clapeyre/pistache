@@ -27,6 +27,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+import journal
 
 
 MAX_AUDIO_BYTES = int(os.getenv("MAX_AUDIO_BYTES", str(10 * 1024 * 1024)))
@@ -63,6 +64,7 @@ PI_SERVICE_MODEL = os.getenv("PI_SERVICE_MODEL", "pistache-chat")
 PISTACHE_BRIDGE_TOKEN = os.getenv("PISTACHE_BRIDGE_TOKEN", "")
 AUTH_MODE = os.getenv("AUTH_MODE", "token")
 CORS_ORIGINS = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "").split(",") if origin.strip()]
+journal.configure_secrets(SPEECH_API_KEY, PI_SERVICE_API_KEY, PISTACHE_BRIDGE_TOKEN)
 
 
 @dataclass
@@ -116,6 +118,14 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+@app.middleware("http")
+async def parent_no_cache(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith(("/api/parents", "/parents")):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def _device_cookie_value() -> str:
@@ -483,6 +493,7 @@ async def health() -> HealthResponse:
 
 
 @app.post("/api/text-turn", response_model=TextTurnResponse, dependencies=[Depends(authenticate)])
+@journal.trace("text")
 async def text_turn(body: TextTurnRequest) -> TextTurnResponse:
     try:
         uuid.UUID(body.session_id)
@@ -498,7 +509,10 @@ async def text_turn(body: TextTurnRequest) -> TextTurnResponse:
                 async with _sessions_lock:
                     generation = session.generation
                     history = list(session.messages)
-                reply, cards, tool_calls = await _pi_reply(history, transcript)
+                with journal.phase("reply"):
+                    reply, cards, tool_calls = await _pi_reply(history, transcript)
+                journal.reply(reply, cards, tool_calls)
+                journal.stage("delivery")
                 async with _sessions_lock:
                     current = _sessions.get(body.session_id)
                     if current is not session or current.generation != generation:
@@ -513,6 +527,7 @@ async def text_turn(body: TextTurnRequest) -> TextTurnResponse:
 
 
 @app.post("/api/voice", response_model=VoiceResponse, dependencies=[Depends(authenticate)])
+@journal.trace("voice")
 async def voice_turn(
     audio: UploadFile = File(...),
     session_id: str = Form(...),
@@ -532,7 +547,8 @@ async def voice_turn(
                     generation = session.generation
                     history = list(session.messages)
 
-                raw_audio = await _read_upload_limited(audio)
+                with journal.phase("recording"):
+                    raw_audio = await _read_upload_limited(audio)
                 suffix = Path(audio.filename or "recording.webm").suffix.lower()
                 if suffix not in {".webm", ".wav", ".mp3", ".m4a", ".mp4", ".ogg", ".flac"}:
                     suffix = ".webm"
@@ -543,7 +559,8 @@ async def voice_turn(
                         stream.write(raw_audio)
                     del raw_audio
                     try:
-                        duration = await _inspect_duration_safely(temp_path)
+                        with journal.phase("recording"):
+                            duration = await _inspect_duration_safely(temp_path)
                     except Exception:
                         raise HTTPException(status_code=422, detail="Je n’arrive pas à lire cet enregistrement. Réessaie.")
                     if duration > MAX_AUDIO_SECONDS:
@@ -551,23 +568,28 @@ async def voice_turn(
                     async with _whisper_lock:
                         stt_start = time.monotonic()
                         try:
-                            transcript, _ = await _transcribe_safely(temp_path)
+                            with journal.phase("transcription"):
+                                transcript, _ = await _transcribe_safely(temp_path)
                         except HTTPException:
                             raise
                         except asyncio.CancelledError:
                             raise
                         except Exception:
                             raise HTTPException(status_code=422, detail="Je n’arrive pas à entendre cet enregistrement. Réessaie.")
+                    journal.message(transcript)
                     if not _valid_transcript(transcript):
                         raise HTTPException(status_code=422, detail="Je n’ai pas bien entendu. Réessaie.")
 
                     stt_ms = (time.monotonic() - stt_start) * 1000
                     llm_start = time.monotonic()
-                    reply, cards, tool_calls = await _pi_reply(history, transcript)
+                    with journal.phase("reply"):
+                        reply, cards, tool_calls = await _pi_reply(history, transcript)
+                    journal.reply(reply, cards, tool_calls)
                     llm_ms = (time.monotonic() - llm_start) * 1000
                     tts_start = time.monotonic()
                     try:
-                        speech = await asyncio.wait_for(_speak(reply), timeout=25)
+                        with journal.phase("speech"):
+                            speech = await asyncio.wait_for(_speak(reply), timeout=25)
                     except HTTPException:
                         raise
                     except asyncio.TimeoutError:
@@ -581,6 +603,7 @@ async def voice_turn(
 
                     # Reset may run during STT, model generation, or TTS. Do not
                     # let a stale turn restore history after reset or eviction.
+                    journal.stage("delivery")
                     async with _sessions_lock:
                         current = _sessions.get(session_id)
                         if current is not session or current.generation != generation:
@@ -618,6 +641,38 @@ async def reset_session(session_id: str) -> dict[str, bool]:
             session.generation += 1
             session.messages.clear()
             session.updated_at = time.monotonic()
+    return {"ok": True}
+
+
+@app.get("/api/parents/activity", dependencies=[Depends(authenticate)])
+async def parent_activity():
+    try:
+        activity = await asyncio.to_thread(journal.store.read)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Le journal est momentanément indisponible.")
+    activity["models"] = {"chat": journal.clean(PI_SERVICE_MODEL, 120), "transcription": journal.clean(STT_MODEL, 120), "speech": journal.clean(TTS_MODEL, 120)}
+    return activity
+
+
+@app.delete("/api/parents/activity", dependencies=[Depends(authenticate)])
+async def parent_clear():
+    try:
+        await asyncio.to_thread(journal.store.delete)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Le journal n’a pas pu être effacé.")
+    return {"ok": True}
+
+
+@app.delete("/api/parents/sessions/{session_id}", dependencies=[Depends(authenticate)])
+async def parent_delete_session(session_id: str):
+    try:
+        session_id = str(uuid.UUID(session_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid session id")
+    try:
+        await asyncio.to_thread(journal.store.delete, session_id)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Cette conversation n’a pas pu être effacée.")
     return {"ok": True}
 
 

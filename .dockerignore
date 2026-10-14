@@ -1,6 +1,7 @@
 **
 !bridge/
 !bridge/app.py
+!bridge/journal.py
 !bridge/requirements.txt
 !bridge/Dockerfile
 !dist/

@@ -10,6 +10,7 @@
     const label = document.createElement('strong'); label.textContent = who === 'child' ? 'Toi' : 'Pistache';
     const body = document.createElement('span'); body.textContent = value;
     row.append(label, body); $('conversation').append(row); row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return body;
   }
   function renderCards(cards) {
     const root = $('cards'); root.replaceChildren();
@@ -40,7 +41,20 @@
     }
     root.hidden = false;
   }
-  function setBusy(value) { state.busy = value; send.disabled = value; input.disabled = value; talk.disabled = value && document.body.dataset.voice !== 'listening'; }
+  function setBusy(value) {
+    state.busy = value; send.disabled = value; input.disabled = value;
+    const thinking = value && !['starting', 'listening'].includes(document.body.dataset.voice);
+    document.body.classList.toggle('thinking', thinking);
+    talk.classList.toggle('busy', thinking);
+    talk.disabled = value && document.body.dataset.voice !== 'listening';
+    $('buttonLabel').textContent = thinking ? 'Un instant…' : document.body.dataset.voice === 'listening' ? 'Terminer' : 'Parler à Pistache';
+    if (thinking) $('statusText').textContent = 'Pistache réfléchit…';
+    else if (!value) $('statusText').textContent = 'Pistache est là pour toi !';
+  }
+  function resetRecording() {
+    document.body.dataset.voice = 'ready'; talk.classList.remove('listening'); talk.setAttribute('aria-pressed', 'false');
+    $('hint').textContent = 'Touche pour commencer, puis touche pour terminer.'; setBusy(false);
+  }
   async function requestTurn(path, payload) {
     const response = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', cache: 'no-store', body: JSON.stringify(payload) });
     if (!response.ok) {
@@ -71,31 +85,33 @@
       state.stream = stream; state.chunks = [];
       const type = mimeType(); state.recorder = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
       state.recorder.addEventListener('dataavailable', (event) => { if (event.data?.size) state.chunks.push(event.data); });
-      state.recorder.addEventListener('stop', () => { const clip = new Blob(state.chunks, { type: state.recorder.mimeType || 'audio/webm' }); stream.getTracks().forEach((track) => track.stop()); state.stream = null; if (clip.size) sendVoice(clip); });
+      state.recorder.addEventListener('stop', () => { const clip = new Blob(state.chunks, { type: state.recorder.mimeType || 'audio/webm' }); stream.getTracks().forEach((track) => track.stop()); state.stream = null; if (clip.size) sendVoice(clip); else { resetRecording(); $('voiceStatus').textContent = 'Je n’ai rien entendu. Tu peux réessayer.'; } });
       state.recorder.start(250); document.body.dataset.voice = 'listening'; talk.disabled = false; talk.classList.add('listening'); talk.setAttribute('aria-pressed', 'true'); $('buttonLabel').textContent = 'Terminer'; $('voiceStatus').textContent = 'Je t’écoute…'; $('hint').textContent = 'Prends ton temps. Touche Terminer quand tu as fini.';
-    } catch (error) { document.body.dataset.voice = 'ready'; setBusy(false); $('voiceStatus').textContent = error?.name === 'NotAllowedError' ? 'Demande à un adulte d’autoriser le micro.' : 'Impossible d’ouvrir le micro. Réessaie.'; }
+    } catch (error) { state.stream?.getTracks().forEach((track) => track.stop()); state.stream = null; resetRecording(); $('voiceStatus').textContent = error?.name === 'NotAllowedError' ? 'Demande à un adulte d’autoriser le micro.' : 'Impossible d’ouvrir le micro. Réessaie.'; }
   }
   async function sendVoice(clip) {
     const data = new FormData(); data.append('audio', clip, clip.type.includes('mp4') ? 'clip.m4a' : 'clip.webm'); data.append('session_id', state.session);
-    addBubble('child', '🎙️ Message vocal'); setBusy(true); document.body.dataset.voice = 'thinking'; $('voiceStatus').textContent = 'Pistache écoute…';
+    const transcriptBubble = addBubble('child', '🎙️ Message vocal'); document.body.dataset.voice = 'thinking'; setBusy(true); $('voiceStatus').textContent = 'Pistache réfléchit…';
     try {
       const response = await fetch('/api/voice', { method: 'POST', body: data, credentials: 'same-origin', cache: 'no-store' });
       if (!response.ok) throw new Error(`Le serveur a répondu ${response.status}.`);
-      const result = await response.json(); showReply(result);
+      const result = await response.json();
+      if (typeof result.transcript === 'string' && result.transcript.trim()) transcriptBubble.textContent = result.transcript;
+      showReply(result);
       if (result.audio_base64) { const raw = atob(result.audio_base64); const bytes = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i); if (state.audioUrl) URL.revokeObjectURL(state.audioUrl); state.audioUrl = URL.createObjectURL(new Blob([bytes], { type: result.audio_mime || 'audio/mpeg' })); $('audio').src = state.audioUrl; $('audio').hidden = false; $('replay').hidden = false; $('audio').play().catch(() => { $('voiceStatus').textContent = 'Pistache a une réponse. Appuie sur Écouter.'; }); }
       $('voiceStatus').textContent = 'À toi de jouer !';
     } catch (error) { addBubble('pistache', error.message || 'La réponse vocale est momentanément indisponible.'); $('voiceStatus').textContent = 'Réessaie quand tu veux.'; }
-    finally { document.body.dataset.voice = 'ready'; talk.classList.remove('listening'); talk.setAttribute('aria-pressed', 'false'); $('buttonLabel').textContent = 'Je parle'; $('hint').textContent = 'Touche pour commencer, puis touche pour terminer.'; setBusy(false); }
+    finally { resetRecording(); }
   }
   talk.addEventListener('click', () => {
     if (state.busy && document.body.dataset.voice !== 'listening') return;
-    if (document.body.dataset.voice === 'listening') { state.recorder.stop(); document.body.dataset.voice = 'thinking'; talk.disabled = true; talk.classList.remove('listening'); talk.setAttribute('aria-pressed', 'false'); $('buttonLabel').textContent = 'Je parle'; $('voiceStatus').textContent = 'Merci, Pistache réfléchit…'; return; }
+    if (document.body.dataset.voice === 'listening') { document.body.dataset.voice = 'thinking'; talk.classList.remove('listening'); talk.setAttribute('aria-pressed', 'false'); setBusy(true); $('voiceStatus').textContent = 'Pistache réfléchit…'; state.recorder.stop(); return; }
     if (['starting', 'thinking'].includes(document.body.dataset.voice)) return;
     startRecording();
   });
   $('replay').addEventListener('click', () => $('audio').play());
   $('audio').addEventListener('ended', () => { $('voiceStatus').textContent = 'À toi de jouer !'; });
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    navigator.serviceWorker.register('/sw.js?rev=pistache-pi-demo-20261013').catch(() => {});
+    navigator.serviceWorker.register('/sw.js?rev=pistache-voice-20261014').catch(() => {});
   }
 })();

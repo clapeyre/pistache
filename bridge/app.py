@@ -163,6 +163,7 @@ class HealthResponse(BaseModel):
 
 
 class VoiceResponse(BaseModel):
+    transcript: str
     reply: str
     audio_base64: str
     audio_mime: str = "audio/mpeg"
@@ -617,7 +618,7 @@ async def voice_turn(
                         current.messages = current.messages[-(MAX_HISTORY_TURNS * 2):]
                         current.updated_at = time.monotonic()
 
-                    return VoiceResponse(reply=reply, audio_base64=base64.b64encode(speech).decode("ascii"), session_id=session_id, cards=cards, toolCalls=tool_calls)
+                    return VoiceResponse(transcript=transcript, reply=reply, audio_base64=base64.b64encode(speech).decode("ascii"), session_id=session_id, cards=cards, toolCalls=tool_calls)
                 finally:
                     if temp_path:
                         try:

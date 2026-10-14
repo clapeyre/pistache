@@ -44,5 +44,8 @@ models/
 runtime-data/
 logs/
 *.log
+*.sqlite*
+*.db
+*.db-*
 .DS_Store
 Thumbs.db

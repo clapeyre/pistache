@@ -27,6 +27,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+import journal
 
 
 MAX_AUDIO_BYTES = int(os.getenv("MAX_AUDIO_BYTES", str(10 * 1024 * 1024)))
@@ -63,6 +64,7 @@ PI_SERVICE_MODEL = os.getenv("PI_SERVICE_MODEL", "pistache-chat")
 PISTACHE_BRIDGE_TOKEN = os.getenv("PISTACHE_BRIDGE_TOKEN", "")
 AUTH_MODE = os.getenv("AUTH_MODE", "token")
 CORS_ORIGINS = [origin.strip() for origin in os.getenv("CORS_ORIGINS", "").split(",") if origin.strip()]
+journal.configure_secrets(SPEECH_API_KEY, PI_SERVICE_API_KEY, PISTACHE_BRIDGE_TOKEN)
 
 
 @dataclass
@@ -113,9 +115,17 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+@app.middleware("http")
+async def parent_no_cache(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith(("/api/parents", "/parents")):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def _device_cookie_value() -> str:
@@ -153,6 +163,7 @@ class HealthResponse(BaseModel):
 
 
 class VoiceResponse(BaseModel):
+    transcript: str
     reply: str
     audio_base64: str
     audio_mime: str = "audio/mpeg"
@@ -359,6 +370,8 @@ async def _pi_reply(history: list[dict[str, str]], transcript: str) -> tuple[str
     if re.match(r"^HTTP\s+[45]\d\d:\s*(?:Upstream error|Service|Error)", reply.strip(), re.IGNORECASE):
         raise HTTPException(status_code=503, detail="Pistache est occupée pour le moment. Réessaie dans un instant.")
     metadata = result.get("pistache", {})
+    if isinstance(metadata, dict):
+        journal.usage(metadata.get('usage'))
     cards = _safe_cards(metadata.get("cards", [])) if isinstance(metadata, dict) else []
     tool_calls = _safe_tool_calls(metadata.get("toolCalls", [])) if isinstance(metadata, dict) else []
     reply = _plain_text_reply(reply)
@@ -483,6 +496,7 @@ async def health() -> HealthResponse:
 
 
 @app.post("/api/text-turn", response_model=TextTurnResponse, dependencies=[Depends(authenticate)])
+@journal.trace("text")
 async def text_turn(body: TextTurnRequest) -> TextTurnResponse:
     try:
         uuid.UUID(body.session_id)
@@ -498,7 +512,10 @@ async def text_turn(body: TextTurnRequest) -> TextTurnResponse:
                 async with _sessions_lock:
                     generation = session.generation
                     history = list(session.messages)
-                reply, cards, tool_calls = await _pi_reply(history, transcript)
+                with journal.phase("reply"):
+                    reply, cards, tool_calls = await _pi_reply(history, transcript)
+                journal.reply(reply, cards, tool_calls)
+                journal.stage("delivery")
                 async with _sessions_lock:
                     current = _sessions.get(body.session_id)
                     if current is not session or current.generation != generation:
@@ -513,6 +530,7 @@ async def text_turn(body: TextTurnRequest) -> TextTurnResponse:
 
 
 @app.post("/api/voice", response_model=VoiceResponse, dependencies=[Depends(authenticate)])
+@journal.trace("voice")
 async def voice_turn(
     audio: UploadFile = File(...),
     session_id: str = Form(...),
@@ -532,7 +550,8 @@ async def voice_turn(
                     generation = session.generation
                     history = list(session.messages)
 
-                raw_audio = await _read_upload_limited(audio)
+                with journal.phase("recording"):
+                    raw_audio = await _read_upload_limited(audio)
                 suffix = Path(audio.filename or "recording.webm").suffix.lower()
                 if suffix not in {".webm", ".wav", ".mp3", ".m4a", ".mp4", ".ogg", ".flac"}:
                     suffix = ".webm"
@@ -543,7 +562,8 @@ async def voice_turn(
                         stream.write(raw_audio)
                     del raw_audio
                     try:
-                        duration = await _inspect_duration_safely(temp_path)
+                        with journal.phase("recording"):
+                            duration = await _inspect_duration_safely(temp_path)
                     except Exception:
                         raise HTTPException(status_code=422, detail="Je n’arrive pas à lire cet enregistrement. Réessaie.")
                     if duration > MAX_AUDIO_SECONDS:
@@ -551,23 +571,28 @@ async def voice_turn(
                     async with _whisper_lock:
                         stt_start = time.monotonic()
                         try:
-                            transcript, _ = await _transcribe_safely(temp_path)
+                            with journal.phase("transcription"):
+                                transcript, _ = await _transcribe_safely(temp_path)
                         except HTTPException:
                             raise
                         except asyncio.CancelledError:
                             raise
                         except Exception:
                             raise HTTPException(status_code=422, detail="Je n’arrive pas à entendre cet enregistrement. Réessaie.")
+                    journal.message(transcript)
                     if not _valid_transcript(transcript):
                         raise HTTPException(status_code=422, detail="Je n’ai pas bien entendu. Réessaie.")
 
                     stt_ms = (time.monotonic() - stt_start) * 1000
                     llm_start = time.monotonic()
-                    reply, cards, tool_calls = await _pi_reply(history, transcript)
+                    with journal.phase("reply"):
+                        reply, cards, tool_calls = await _pi_reply(history, transcript)
+                    journal.reply(reply, cards, tool_calls)
                     llm_ms = (time.monotonic() - llm_start) * 1000
                     tts_start = time.monotonic()
                     try:
-                        speech = await asyncio.wait_for(_speak(reply), timeout=25)
+                        with journal.phase("speech"):
+                            speech = await asyncio.wait_for(_speak(reply), timeout=25)
                     except HTTPException:
                         raise
                     except asyncio.TimeoutError:
@@ -581,6 +606,7 @@ async def voice_turn(
 
                     # Reset may run during STT, model generation, or TTS. Do not
                     # let a stale turn restore history after reset or eviction.
+                    journal.stage("delivery")
                     async with _sessions_lock:
                         current = _sessions.get(session_id)
                         if current is not session or current.generation != generation:
@@ -592,7 +618,7 @@ async def voice_turn(
                         current.messages = current.messages[-(MAX_HISTORY_TURNS * 2):]
                         current.updated_at = time.monotonic()
 
-                    return VoiceResponse(reply=reply, audio_base64=base64.b64encode(speech).decode("ascii"), session_id=session_id, cards=cards, toolCalls=tool_calls)
+                    return VoiceResponse(transcript=transcript, reply=reply, audio_base64=base64.b64encode(speech).decode("ascii"), session_id=session_id, cards=cards, toolCalls=tool_calls)
                 finally:
                     if temp_path:
                         try:
@@ -618,6 +644,77 @@ async def reset_session(session_id: str) -> dict[str, bool]:
             session.generation += 1
             session.messages.clear()
             session.updated_at = time.monotonic()
+    return {"ok": True}
+
+
+@app.get("/api/parents/activity", dependencies=[Depends(authenticate)])
+async def parent_activity():
+    try:
+        activity = await asyncio.to_thread(journal.store.read)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Le journal est momentanément indisponible.")
+    activity["models"] = {"chat": journal.clean(PI_SERVICE_MODEL, 120), "transcription": journal.clean(STT_MODEL, 120), "speech": journal.clean(TTS_MODEL, 120)}
+    return activity
+
+
+@app.delete("/api/parents/activity", dependencies=[Depends(authenticate)])
+async def parent_clear():
+    try:
+        await asyncio.to_thread(journal.store.delete)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Le journal n’a pas pu être effacé.")
+    return {"ok": True}
+
+
+@app.get('/api/parents/metrics', dependencies=[Depends(authenticate)])
+async def parent_metrics(period: str = '7d'):
+    if period not in {'24h', '7d', '30d'}:
+        raise HTTPException(status_code=400, detail='Invalid period')
+    try:
+        return await asyncio.to_thread(journal.store.metrics, period)
+    except Exception:
+        raise HTTPException(status_code=503, detail='Les graphiques sont indisponibles.')
+
+
+class ProfileEdit(BaseModel):
+    content: str = Field(max_length=8000)
+    revision: str | None = Field(default=None, max_length=64)
+
+
+async def _parent_profiles(method, filename=None, body=None):
+    if filename is not None and filename not in {'USER.md', 'SOUL.md', 'SYSTEM.md', 'MEMORY.md', 'profile.json'}:
+        raise HTTPException(status_code=400, detail='Unknown profile file')
+    headers = {'Authorization': f'Bearer {PI_SERVICE_API_KEY}'} if PI_SERVICE_API_KEY else {}
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            response = await client.request(method, f'{PI_SERVICE_BASE_URL}/parents/context' + (f'/{filename}' if filename else ''), headers=headers, json=body)
+        if response.is_error:
+            raise HTTPException(status_code=response.status_code if response.status_code in {400, 403, 409, 413} else 503, detail='Le profil n’a pas pu être lu ou enregistré.')
+        return response.json()
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(status_code=503, detail='Le service de profil est indisponible.')
+
+
+@app.get('/api/parents/profile', dependencies=[Depends(authenticate)])
+async def parent_profiles():
+    return await _parent_profiles('GET')
+
+
+@app.put('/api/parents/profile/{filename}', dependencies=[Depends(authenticate)])
+async def parent_save_profile(filename: str, body: ProfileEdit):
+    return await _parent_profiles('PUT', filename, body.model_dump())
+
+
+@app.delete("/api/parents/sessions/{session_id}", dependencies=[Depends(authenticate)])
+async def parent_delete_session(session_id: str):
+    try:
+        session_id = str(uuid.UUID(session_id))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid session id")
+    try:
+        await asyncio.to_thread(journal.store.delete, session_id)
+    except Exception:
+        raise HTTPException(status_code=503, detail="Cette conversation n’a pas pu être effacée.")
     return {"ok": True}
 
 

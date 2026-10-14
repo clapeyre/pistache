@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { answer, readBifrostKey } from "./pi.js";
 import { fixedSystemPrompt, MAX_BODY_BYTES, MAX_TOOL_CALLS, normalizeHistory, toolsForPi } from "./core.js";
+import { listProfiles, saveProfile } from './profiles.js';
 
 const CONTEXT_DIR = process.env.CONTEXT_DIR || "/context";
 const CONTEXT_FILES = ["SYSTEM.md", "SOUL.md", "USER.md", "MEMORY.md"];
@@ -56,19 +57,33 @@ export function readCallerKey() {
   return "";
 }
 
-export function createServer({ respond = answer, context = loadContext(), apiKey = readCallerKey() } = {}) {
+export function createServer({ respond = answer, context, apiKey = readCallerKey(), contextDir = CONTEXT_DIR, editable = process.env.CONTEXT_EDITABLE === 'true' } = {}) {
+  const getContext = () => context === undefined ? loadContext(contextDir) : context;
+  getContext();
   return http.createServer(async (req, res) => {
     res.setHeader("content-type", "application/json; charset=utf-8");
     if (req.method === "GET" && req.url === "/health") {
-      const contextText = context || "";
+      let contextText;
+      try { contextText = getContext() || ''; } catch { res.writeHead(503); res.end(JSON.stringify({ error: { message: 'Profile unavailable' } })); return; }
       let keyConfigured = false;
       try { keyConfigured = Boolean(readBifrostKey()); } catch {}
       const configured = Boolean(process.env.BIFROST_BASE_URL && keyConfigured);
       const readiness = configured ? "configured_unverified" : "not_configured";
       return void (res.writeHead(200), res.end(JSON.stringify({ status: "ok", readiness, upstream: { gateway: process.env.BIFROST_BASE_URL ? "configured" : "missing", model: process.env.BIFROST_MODEL || "pistache-chat" }, activeTools: toolsForPi().map((tool) => tool.name), promptChars: fixedSystemPrompt(contextText).length, importedContextFiles: contextFilesPresent(), requestLimits: { bodyBytes: MAX_BODY_BYTES, historyMessages: 40, toolCalls: MAX_TOOL_CALLS, timeoutMs: 30_000 }, liveGatewayVerified: false })));
     }
-    if (req.method !== "POST" || req.url !== "/v1/chat/completions") return void (res.writeHead(404), res.end(JSON.stringify({ error: { message: "Not found" } })));
+    const profilesRoute = req.url === '/v1/parents/context' || req.url?.startsWith('/v1/parents/context/');
     if (apiKey && req.headers.authorization !== `Bearer ${apiKey}`) return void (res.writeHead(401), res.end(JSON.stringify({ error: { message: "Unauthorized" } })));
+    if (profilesRoute) {
+      res.setHeader('cache-control', 'no-store');
+      try {
+        const secrets = [readBifrostKey(), apiKey];
+        const data = req.method === 'GET' && req.url === '/v1/parents/context' ? listProfiles(contextDir, editable, secrets) : req.method === 'PUT' && req.url.startsWith('/v1/parents/context/') ? saveProfile(contextDir, decodeURIComponent(req.url.slice('/v1/parents/context/'.length)), await bodyJson(req), editable, secrets) : null;
+        if (!data) { res.writeHead(405); res.end(JSON.stringify({ error: { message: 'Method not allowed' } })); return; }
+        res.end(JSON.stringify(data));
+      } catch (error) { res.writeHead(error.status || 503); res.end(JSON.stringify({ error: { message: 'Profile request failed' } })); }
+      return;
+    }
+    if (req.method !== "POST" || req.url !== "/v1/chat/completions") return void (res.writeHead(404), res.end(JSON.stringify({ error: { message: "Not found" } })));
     try {
       const body = await bodyJson(req);
       const messages = normalizeHistory(body.messages);
@@ -80,7 +95,7 @@ export function createServer({ respond = answer, context = loadContext(), apiKey
       let result;
       try {
         result = await Promise.race([
-          respond({ messages, systemPrompt: fixedSystemPrompt(context), signal: controller.signal }),
+          respond({ messages, systemPrompt: fixedSystemPrompt(getContext()), signal: controller.signal }),
           new Promise((_, reject) => controller.signal.addEventListener("abort", () => reject(new Error(timedOut ? "Request timed out" : "Request aborted")), { once: true }))
         ]);
       } finally {
@@ -89,7 +104,7 @@ export function createServer({ respond = answer, context = loadContext(), apiKey
       }
       const id = `chatcmpl-${Date.now()}`;
       res.writeHead(200);
-      res.end(JSON.stringify({ id, object: "chat.completion", created: Math.floor(Date.now() / 1000), model: result.model || "pistache-chat", choices: [{ index: 0, message: { role: "assistant", content: result.text }, finish_reason: "stop" }], pistache: { cards: result.cards || [], toolCalls: result.toolCalls || [] } }));
+      res.end(JSON.stringify({ id, object: "chat.completion", created: Math.floor(Date.now() / 1000), model: result.model || "pistache-chat", choices: [{ index: 0, message: { role: "assistant", content: result.text }, finish_reason: "stop" }], pistache: { cards: result.cards || [], toolCalls: result.toolCalls || [], usage: result.usage || null } }));
     } catch (error) {
       const status = error.status || (error.message === "Request timed out" ? 504 : error.message === "Request aborted" ? 499 : error.message === "Invalid JSON" || /messages|history|text|last message|too large|Only text/u.test(error.message) ? 400 : 502);
       if (!res.destroyed && !res.headersSent) res.writeHead(status);

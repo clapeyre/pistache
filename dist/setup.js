@@ -1,6 +1,9 @@
 (() => {
+  if (location.pathname === '/setup.html') { location.replace('/parents.html#connexion'); return; }
   const status = document.getElementById('setup-status');
-  document.getElementById('check').addEventListener('click', async () => {
+  const check = document.getElementById('check');
+  check.addEventListener('click', async () => {
+    check.disabled = true;
     status.textContent = 'Je vérifie…'; status.classList.remove('bad');
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 7000);
     try {
@@ -12,6 +15,6 @@
     } catch (error) {
       status.textContent = error.name === 'AbortError' ? 'Pistache ne répond pas. Vérifie la connexion et réessaie.' : error.message;
       status.classList.add('bad');
-    } finally { clearTimeout(timer); }
+    } finally { clearTimeout(timer); check.disabled = false; }
   });
 })();

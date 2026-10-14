@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fff8e9">
+  <title>Pistache · Côté parents</title>
+  <link rel="stylesheet" href="/parents.css?v=parents-navigation-20261014">
+  <script src="/parents.js?v=parents-navigation-20261014" defer></script>
+  <script src="/setup.js?v=parents-navigation-20261014" defer></script>
+</head>
+<body>
+<main>
+  <header><div><p class="eyebrow">LA PETITE CABANE</p><h1>Pistache, côté parents</h1><p>Les discussions, le profil de Pistache et les petits réglages.</p></div><a class="return-link" href="/">← Retour à Pistache</a></header>
+  <nav class="tabs" aria-label="Côté parents"><button id="conversation-tab" aria-pressed="true" aria-controls="conversation-panel">Conversations</button><button id="profile-tab" aria-pressed="false" aria-controls="profile-panel">Profil</button><button id="health-tab" aria-pressed="false" aria-controls="health-panel">Activité</button><button id="connection-tab" aria-pressed="false" aria-controls="connection-panel">Connexion</button></nav>
+  <div id="journal-overview">
+    <div class="toolbar"><span id="state" role="status">Ouverture du journal…</span><button id="refresh">Actualiser le journal</button></div>
+    <section class="stats" aria-label="En un coup d’œil"><article><span>Échanges gardés</span><strong id="count">—</strong></article><article><span>Tours interrompus</span><strong id="failed">—</strong></article><article><span>Attente moyenne</span><strong id="average">—</strong></article></section>
+  </div>
+  <section id="profile-panel" aria-labelledby="profile-tab" hidden><h2>Le profil de Pistache</h2><p class="note">Les repères pour accompagner l’enfant et la façon dont Pistache répond. Elle relit ces fichiers à chaque nouvelle réponse. Modifier le profil ne réécrit pas les anciennes discussions. Les règles fixes de Pistache restent en place.</p><p id="profile-state" role="status"></p><label for="profile-file">Fichier</label><select id="profile-file"></select><p id="profile-description" class="note"></p><label for="profile-content">Contenu</label><textarea id="profile-content" rows="16" maxlength="8000" spellcheck="false"></textarea><div class="toolbar"><button id="profile-reload">Relire les fichiers</button><button id="profile-save">Enregistrer</button></div></section>
+  <section id="conversation-panel" aria-labelledby="conversation-tab"><h2>Les dernières discussions</h2><p class="note">Pour les messages vocaux, on voit ce que la transcription a entendu. Ça peut différer de ce qui a été dit.</p><div id="sessions"></div><details class="journal-management"><summary>Gérer le journal</summary><p id="retention">Le journal reste sur le serveur. Aucun audio n’est conservé.</p><button id="clear" class="danger">Effacer tout le journal</button><p class="note">Effacer le journal ne réinitialise pas la conversation en cours.</p></details></section>
+  <section id="health-panel" aria-labelledby="health-tab" hidden>
+    <h2>L’activité au fil du temps</h2><label for="period">Période</label><select id="period"><option value="24h">24 heures</option><option value="7d" selected>7 jours</option><option value="30d">30 jours</option></select><p id="chart-state" role="status" class="note"></p>
+    <div class="charts"><article><h3>Échanges</h3><div id="count-chart"></div></article><article><h3>Attente · moyenne et P95</h3><div id="latency-chart"></div></article><article><h3>Coût chat rapporté · USD</h3><div id="cost-chart"></div></article></div>
+    <p class="note">Vert : moyenne. Orange : P95, le temps sous lequel se trouvent 95 % des échanges. Le coût ne couvre que le chat, quand le gateway le transmet ; transcription et voix ne sont pas incluses. Les trous indiquent un coût inconnu, pas un coût nul.</p>
+    <details><summary>Les chiffres derrière les graphiques</summary><div class="table-wrap"><table><thead><tr><th>Période</th><th>Échanges</th><th>Échecs</th><th>Moyenne</th><th>P95</th><th>Chat USD</th><th>Coûts reçus</th></tr></thead><tbody id="metric-rows"></tbody></table></div></details>
+    <h2>Les étapes d’un échange</h2><p class="note">Transcrire → répondre avec Pi → préparer la voix. « Réponse prête » signifie que le serveur a terminé ; ça ne confirme pas la lecture sur l’appareil.</p><p class="label">Routes configurées actuellement</p><div id="models" class="models"></div><div class="table-wrap"><table><caption>Échanges récents</caption><thead><tr><th>Quand</th><th>Entrée</th><th>Résultat</th><th>Transcription</th><th>Pi</th><th>Voix</th><th>Total</th></tr></thead><tbody id="timings"></tbody></table></div><p class="note">L’attente totale inclut aussi la file d’attente et la préparation de l’enregistrement.</p>
+  </section>
+  <section id="connection-panel" aria-labelledby="connection-tab" hidden>
+    <div class="settings-card"><h2>La connexion à Pistache</h2><p>Utilise le même lien privé sur les appareils de la maison.</p><p id="setup-status" class="setup-status" role="status">Tu peux vérifier que Pistache répond depuis cet appareil.</p><button id="check" type="button">Vérifier la connexion</button><p class="note">Ce bouton vérifie le serveur. Pour essayer le micro et le son, retourne à Pistache et fais un petit échange.</p></div>
+    <div class="settings-card"><h2>Parler avec Pistache</h2><ol><li>À la première utilisation, autorise le microphone quand le navigateur le demande.</li><li>Touche « Parler à Pistache » pour commencer. Tu peux faire des pauses.</li><li>Touche « Terminer » quand tu as fini. Pistache réfléchit, puis te répond.</li></ol><p>Si la réponse ne se lance pas, touche « Écouter ».</p></div>
+  </section>
+  <footer>Même accès privé que Pistache. Les discussions restent sur le serveur ; aucun audio n’est conservé. Toute personne qui peut ouvrir Pistache peut aussi ouvrir cet espace.</footer>
+</main>
+</body>
+</html>

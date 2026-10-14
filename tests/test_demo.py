@@ -100,6 +100,7 @@ def test_voice_turn_preserves_explicit_audio_flow_and_carries_cards(client, monk
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["cards"][0]["result"] == 10
+    assert body["transcript"] == "Bonjour Pistache"
     assert body["audio_base64"] == base64.b64encode(b"sample-mp3").decode("ascii")
 
 

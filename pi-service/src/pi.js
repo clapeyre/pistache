@@ -4,6 +4,7 @@ import { streamSimple } from "@earendil-works/pi-ai/compat";
 import { createAgentSession, createExtensionRuntime, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { MAX_REPLY_TOKENS, MAX_TOOL_CALLS, assertPiSessionSafety, fixedSystemPrompt, runTool } from "./core.js";
 import { readFileSync } from "node:fs";
+import { usageFetch, usageSummary } from './usage.js';
 
 const cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 
@@ -88,9 +89,11 @@ export async function createPiSession({ messages, systemPrompt, env = process.en
   const { model, apiKey } = makeModel(env);
   const cwd = process.cwd();
   const modelRuntime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, refreshOnCreate: false, allowModelNetwork: false, signal });
+  const reportedUsage = [];
+  const observedFetch = usageFetch(reportedUsage);
   modelRuntime.registerProvider("pistache-bifrost", {
     name: "Pistache Bifrost", baseUrl: model.baseUrl, api: "openai-completions", apiKey,
-    streamSimple,
+    streamSimple: (model, context, options) => streamSimple(model, context, { ...options, fetch: observedFetch }),
     models: [{ id: model.id, name: model.name, api: "openai-completions", baseUrl: model.baseUrl, reasoning: false, input: ["text"], cost, contextWindow: model.contextWindow, maxTokens: model.maxTokens, compat: model.compat }]
   });
   await modelRuntime.setRuntimeApiKey("pistache-bifrost", apiKey);
@@ -125,7 +128,7 @@ export async function createPiSession({ messages, systemPrompt, env = process.en
   session._baseSystemPrompt = prompt;
   session.agent.state.systemPrompt = prompt;
   assertPiSessionSafety(session, prompt);
-  return { session, cards, toolCalls: calls, model, modelRuntime, toolBudget, unsubscribeBudget };
+  return { session, cards, toolCalls: calls, model, modelRuntime, toolBudget, unsubscribeBudget, reportedUsage };
 }
 
 export async function answer({ messages, systemPrompt, env = process.env, signal }) {
@@ -137,7 +140,7 @@ export async function answer({ messages, systemPrompt, env = process.env, signal
     const last = [...state.session.messages].reverse().find((item) => item.role === "assistant");
     if (!last || last.stopReason === "error" || last.stopReason === "aborted") throw new Error(last?.stopReason === "aborted" ? "Request aborted" : `Model request failed: ${last?.errorMessage || "no assistant response"}`);
     const text = last?.content?.filter((part) => part.type === "text").map((part) => part.text).join("").slice(0, 4_000) || "Je peux t’aider avec un mot ou un calcul !";
-    return { text, cards: state.cards, toolCalls: state.toolCalls, model: state.model.id };
+    return { text, cards: state.cards, toolCalls: state.toolCalls, model: state.model.id, usage: usageSummary(state.reportedUsage) };
   } finally {
     signal?.removeEventListener("abort", abort);
     state.unsubscribeBudget();

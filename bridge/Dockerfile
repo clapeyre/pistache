@@ -12,10 +12,11 @@ WORKDIR /app
 COPY bridge/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY bridge/app.py ./app.py
+COPY bridge/journal.py ./journal.py
 COPY dist ./dist
 
 RUN useradd --create-home --uid 10001 appuser && \
-    mkdir -p /models/huggingface && chown -R appuser:appuser /app /models
+    mkdir -p /models/huggingface /data && chown -R appuser:appuser /app /models /data
 USER appuser
 
 EXPOSE 8000

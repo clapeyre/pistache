@@ -35,7 +35,7 @@ test("actual Pi request receives reconstructed history, complete fixed prompt, a
     payload = JSON.parse(init.body);
     const events = [
       { id: "fake", object: "chat.completion.chunk", created: 1, model: "pistache-chat", choices: [{ index: 0, delta: { content: "Bonjour !" }, finish_reason: null }] },
-      { id: "fake", object: "chat.completion.chunk", created: 1, model: "pistache-chat", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }
+      { id: "fake", object: "chat.completion.chunk", created: 1, model: "pistache-chat", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 12, completion_tokens: 3, cost: 0.004 } }
     ].map((event) => `data: ${JSON.stringify(event)}\n\n`).join("") + "data: [DONE]\n\n";
     return new Response(events, { status: 200, headers: { "content-type": "text/event-stream" } });
   };
@@ -44,6 +44,8 @@ test("actual Pi request receives reconstructed history, complete fixed prompt, a
       { role: "assistant", content: "Salut Pistache" }, { role: "user", content: "On joue ?" }
     ] }).catch((error) => { throw new Error(`${error.message} url=${requestUrl} payload=${JSON.stringify(payload)}`); });
     assert.equal(result.text, "Bonjour !");
+    assert.equal(result.usage.cost_usd, 0.004);
+    assert.equal(result.usage.requests, 1);
     assert.equal(payload.messages[0].role, "system");
     assert.equal(payload.messages[0].content, "FIXED PARENT PROMPT");
     assert.deepEqual(payload.messages.slice(1).map(({ role, content }) => [role, content]), [

@@ -16,8 +16,6 @@ deployment plumbing taken out. It’s a hobby project, still finding its feet.
 - A **Pi service**: uses the Pi agent runtime, with just two tools:
   `show_word` displays a word and its letters; `calculate` handles simple arithmetic.
   Pi’s usual shell and filesystem tools are disabled.
-- A separate adult recorder page for collecting your own test phrases locally.
-  It doesn’t send those recordings to the chat service.
 
 ```text
 Browser → Python bridge → Pi service → Bifrost → chat model
@@ -73,14 +71,67 @@ example local rather than opening its port to the internet.
 
 `examples/context/` contains a generic persona and profile. Copy those files into
 `local/context/`, edit them, and set `CONTEXT_DIR=./local/context` in `.env`.
-The profile is read-only at runtime. Conversations live in RAM; there’s no persistent
-learning or memory-writing feature yet.
+The example profile is read-only by default. Pi's conversation context lives in RAM;
+there’s no persistent learning or memory-writing feature yet. The separate parent
+journal below keeps a record to look back on, without feeding it back into Pi.
 
-Actual voice turns go to the configured models. The adult recorder page is separate:
-it keeps its clips and manual transcripts in that browser’s IndexedDB until you
-export or delete them. Browser storage can disappear, so export anything you want
-to keep. Please keep your own recordings, profiles and keys out of Git; `local/`,
-secrets, audio exports and backups are ignored here.
+## Pistache, côté parents
+
+Open **Côté parents** from Pistache (or `/parents.html`). Conversations, Profile, Activity and Connection are all in one place. Old `/setup.html` links open the Connection section.
+It shows recent conversations, word/math tools, and how long transcription,
+Pi's reply and speech synthesis took. Failed voice turns keep any transcript and
+reply already produced, with the stage that failed. “Réponse prête” means the
+server finished, not that the speaker on your device played it.
+
+The journal stays on your server in SQLite. Compose gives it a persistent
+`parent-journal` volume; native runs use `local/parents.sqlite3`, or set
+`PARENTS_DB_PATH` to another local path. No recordings or generated audio are
+saved in this journal. It keeps up to 1,000 exchanges for 30 days; adjust
+`PARENTS_MAX_TURNS` and `PARENTS_RETENTION_DAYS` in `.env`. Expiry runs when
+the journal is read or a turn is saved. The page shows the latest 200 exchanges.
+
+You can erase a conversation or the whole journal. That removes journal entries,
+including preventing already-running turns from bringing them back; it doesn't
+reset Pi's current conversation or erase copies you made separately. Turn recording
+continues for new conversations. A storage hiccup won't stop the child chatting;
+the parent page will report when the journal can't be read.
+
+There’s no extra parent password: this page uses the same private access as the
+rest of Pistache. Anyone who can reach your private site can read or erase the
+journal, including a child using that site. Keep it behind that private access.
+Text, keys and recordings still stay out of Git; SQLite files are ignored too.
+
+The **Fonctionnement** tab includes charts for exchange count, average/P95 latency
+and reported chat cost over 24 hours, 7 days or 30 days. They use all retained
+journal entries, rather than just the latest 200 shown in the conversation list.
+Time buckets are UTC hours/days, with labels displayed in your browser's time zone.
+An exchange can involve several chat requests when Pi calls tools: costs are summed
+only when each request reports one. Missing costs stay unknown. Speech/transcription
+charges aren't included, and Pi's placeholder model prices aren't used. This is
+a view of reported chat charges, not your whole gateway bill.
+
+The **Profil** tab shows `USER.md`, `SOUL.md`, `SYSTEM.md`, and optional `MEMORY.md`
+and `profile.json`. To enable editing for your own local files, copy the examples
+to `local/context/` and set these in `.env`:
+
+```dotenv
+CONTEXT_DIR=./local/context
+CONTEXT_EDITABLE=true
+CONTEXT_MOUNT_MODE=rw
+```
+
+Recreate the services with `docker compose up -d --build`. The person running the
+Pi service needs write access to that directory. For native runs, set `CONTEXT_DIR`
+and `CONTEXT_EDITABLE=true` on the Pi service. Saves take effect on the next reply;
+there's no restart needed for each edit. A revision check catches overlapping
+edits, and only the named profile files can be changed. Fixed tool and safety rules
+remain outside these files. Enabling editing gives everyone with private-site
+access the same edit access, as with the rest of the parent page.
+
+Actual voice turns go to the configured models. Keep your own recordings, profiles
+and keys out of Git; `local/`, secrets, audio exports and backups are ignored here.
+The old standalone benchmark recorder has been retired. Removing its page doesn't
+erase any clips that an earlier installation left in your browser's storage.
 
 ## Why Bifrost? Could I use something else?
 

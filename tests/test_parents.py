@@ -197,3 +197,58 @@ def test_deletion_api_clears_journal_and_rejects_invalid_session(client):
     assert client.delete('/api/parents/sessions/bad', headers={'Origin': 'https://testserver'}).status_code == 400
     assert client.delete('/api/parents/activity', headers={'Origin': 'https://testserver'}).status_code == 200
     assert client.get('/api/parents/activity').json()['summary']['turns'] == 0
+
+
+def test_metrics_use_all_rows_and_keep_unknown_costs_unknown(client):
+    for index in range(205):
+        row = event()
+        row['total_ms'] = 100 if index < 204 else 1000
+        if index == 0:
+            row['usage'] = {'cost_usd': 0.003}
+        journal.store.add(row, journal.store.epoch)
+    assert len(journal.store.read()['turns']) == 200
+    result = client.get('/api/parents/metrics?period=24h').json()
+    assert sum(bucket['count'] for bucket in result['buckets']) == 205
+    assert sum(bucket['cost_known_turns'] for bucket in result['buckets']) == 1
+    active = next(bucket for bucket in result['buckets'] if bucket['count'])
+    assert active['p95_ms'] == 100
+    assert active['cost_usd'] == 0.003
+    journal.store.delete()
+    row = event(); journal.store.add(row, journal.store.epoch)
+    assert next(bucket for bucket in journal.store.metrics('24h')['buckets'] if bucket['count'])['cost_usd'] is None
+    assert client.get('/api/parents/metrics?period=bad').status_code == 400
+
+
+def test_profile_proxy_has_same_origin_write_protection_and_no_arbitrary_paths(client, monkeypatch):
+    requests = []
+    class Response:
+        is_error = False
+        def json(self): return {'editable': True, 'files': [{'name': 'USER.md', 'content': 'Synthetic profile'}]}
+    class Proxy:
+        def __init__(self, **_): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): pass
+        async def request(self, method, url, **kwargs): requests.append((method, url, kwargs)); return Response()
+    monkeypatch.setattr(bridge.httpx, 'AsyncClient', Proxy)
+    assert client.get('/api/parents/profile').status_code == 200
+    body = {'content': 'New synthetic preferences', 'revision': None}
+    assert client.put('/api/parents/profile/USER.md', json=body).status_code == 403
+    assert client.put('/api/parents/profile/USER.md', headers={'Origin': 'https://testserver'}, json=body).status_code == 200
+    assert requests[-1][0] == 'PUT'
+    assert requests[-1][2]['json'] == body
+    assert client.put('/api/parents/profile/secrets', headers={'Origin': 'https://testserver'}, json=body).status_code == 400
+
+
+def test_bridge_retains_only_numeric_usage(client, monkeypatch):
+    class Response:
+        is_error = False
+        def json(self): return {'choices': [{'message': {'content': 'Bonjour !'}}], 'pistache': {'usage': {'cost_usd': 0.003, 'requests': 2, 'prompt_tokens': 14, 'private_key': 'not retained'}}}
+    class Proxy:
+        def __init__(self, **_): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): pass
+        async def post(self, *_args, **_kwargs): return Response()
+    monkeypatch.setattr(bridge.httpx, 'AsyncClient', Proxy)
+    assert post(client).status_code == 200
+    usage = journal.store.read()['turns'][0]['usage']
+    assert usage == {'cost_usd': 0.003, 'requests': 2, 'prompt_tokens': 14}

@@ -43,11 +43,12 @@ services:
       PORT: "8788"
       CONTEXT_DIR: /context
       REQUIRED_CONTEXT_FILES: SYSTEM.md,SOUL.md,USER.md
+      CONTEXT_EDITABLE: ${CONTEXT_EDITABLE:-false}
       BIFROST_BASE_URL: ${BIFROST_BASE_URL:?Set BIFROST_BASE_URL in .env}
       BIFROST_MODEL: ${BIFROST_MODEL:-pistache-chat}
       BIFROST_API_KEY: ${BIFROST_API_KEY:?Set BIFROST_API_KEY in .env}
     volumes:
-      - ${CONTEXT_DIR:-./examples/context}:/context:ro
+      - ${CONTEXT_DIR:-./examples/context}:/context:${CONTEXT_MOUNT_MODE:-ro}
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m

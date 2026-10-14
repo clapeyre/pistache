@@ -8,6 +8,7 @@ from functools import wraps
 import inspect
 import json
 import logging
+import math
 import os
 from pathlib import Path
 import re
@@ -83,6 +84,33 @@ class Journal:
                 connection.execute("DELETE FROM turns WHERE session = ?", (session,))
             self.epoch += 1  # A turn already in progress cannot bring deleted data back.
 
+    def metrics(self, period):
+        count, seconds = {'24h': (24, 3600), '7d': (7, 86400), '30d': (30, 86400)}[period]
+        end = int(time.time() // seconds) * seconds
+        start = end - (count - 1) * seconds
+        buckets = [{'started': start+i*seconds, 'count': 0, 'failed': 0, 'latencies': [], 'costs': []} for i in range(count)]
+        with self.lock, self.connection() as connection:
+            self.prune(connection)
+            rows = connection.execute('SELECT started, payload FROM turns WHERE started >= ? AND started <= ?', (start, time.time())).fetchall()
+        for timestamp, payload in rows:
+            row = json.loads(payload)
+            bucket = buckets[min(count-1, int((timestamp-start)//seconds))]
+            bucket['count'] += 1
+            bucket['failed'] += row.get('status') != 'ok'
+            if isinstance(row.get('total_ms'), (int, float)):
+                bucket['latencies'].append(row['total_ms'])
+            cost = (row.get('usage') or {}).get('cost_usd')
+            if isinstance(cost, (int, float)) and math.isfinite(cost) and cost >= 0:
+                bucket['costs'].append(cost)
+        for bucket in buckets:
+            values = sorted(bucket.pop('latencies'))
+            costs = bucket.pop('costs')
+            bucket['average_ms'] = round(sum(values)/len(values)) if values else None
+            bucket['p95_ms'] = values[math.ceil(len(values)*0.95)-1] if values else None
+            bucket['cost_usd'] = sum(costs) if costs else (0 if not bucket['count'] else None)
+            bucket['cost_known_turns'] = len(costs)
+        return {'period': period, 'buckets': buckets, 'retention_days': self.retention_days}
+
 
 store = Journal(os.getenv("PARENTS_DB_PATH", "local/parents.sqlite3"), os.getenv("PARENTS_MAX_TURNS", "1000"), os.getenv("PARENTS_RETENTION_DAYS", "30"))
 
@@ -116,6 +144,11 @@ def reply(text, cards, tools):
         # These have already passed the bridge's bounded shape validation.
         event['cards'] = safe_tree(cards[:8])
         event['tools'] = safe_tree(tools[:8])
+
+
+def usage(value):
+    if (event := current.get()) is not None and isinstance(value, dict):
+        event['usage'] = {key: number for key in ('requests', 'prompt_tokens', 'completion_tokens', 'cost_usd') if isinstance((number := value.get(key)), (int, float)) and not isinstance(number, bool) and math.isfinite(number) and 0 <= number <= 1e12}
 
 
 def safe_tree(value):

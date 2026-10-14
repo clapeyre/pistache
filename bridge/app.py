@@ -115,7 +115,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
 
@@ -369,6 +369,8 @@ async def _pi_reply(history: list[dict[str, str]], transcript: str) -> tuple[str
     if re.match(r"^HTTP\s+[45]\d\d:\s*(?:Upstream error|Service|Error)", reply.strip(), re.IGNORECASE):
         raise HTTPException(status_code=503, detail="Pistache est occupée pour le moment. Réessaie dans un instant.")
     metadata = result.get("pistache", {})
+    if isinstance(metadata, dict):
+        journal.usage(metadata.get('usage'))
     cards = _safe_cards(metadata.get("cards", [])) if isinstance(metadata, dict) else []
     tool_calls = _safe_tool_calls(metadata.get("toolCalls", [])) if isinstance(metadata, dict) else []
     reply = _plain_text_reply(reply)
@@ -661,6 +663,45 @@ async def parent_clear():
     except Exception:
         raise HTTPException(status_code=503, detail="Le journal n’a pas pu être effacé.")
     return {"ok": True}
+
+
+@app.get('/api/parents/metrics', dependencies=[Depends(authenticate)])
+async def parent_metrics(period: str = '7d'):
+    if period not in {'24h', '7d', '30d'}:
+        raise HTTPException(status_code=400, detail='Invalid period')
+    try:
+        return await asyncio.to_thread(journal.store.metrics, period)
+    except Exception:
+        raise HTTPException(status_code=503, detail='Les graphiques sont indisponibles.')
+
+
+class ProfileEdit(BaseModel):
+    content: str = Field(max_length=8000)
+    revision: str | None = Field(default=None, max_length=64)
+
+
+async def _parent_profiles(method, filename=None, body=None):
+    if filename is not None and filename not in {'USER.md', 'SOUL.md', 'SYSTEM.md', 'MEMORY.md', 'profile.json'}:
+        raise HTTPException(status_code=400, detail='Unknown profile file')
+    headers = {'Authorization': f'Bearer {PI_SERVICE_API_KEY}'} if PI_SERVICE_API_KEY else {}
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            response = await client.request(method, f'{PI_SERVICE_BASE_URL}/parents/context' + (f'/{filename}' if filename else ''), headers=headers, json=body)
+        if response.is_error:
+            raise HTTPException(status_code=response.status_code if response.status_code in {400, 403, 409, 413} else 503, detail='Le profil n’a pas pu être lu ou enregistré.')
+        return response.json()
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(status_code=503, detail='Le service de profil est indisponible.')
+
+
+@app.get('/api/parents/profile', dependencies=[Depends(authenticate)])
+async def parent_profiles():
+    return await _parent_profiles('GET')
+
+
+@app.put('/api/parents/profile/{filename}', dependencies=[Depends(authenticate)])
+async def parent_save_profile(filename: str, body: ProfileEdit):
+    return await _parent_profiles('PUT', filename, body.model_dump())
 
 
 @app.delete("/api/parents/sessions/{session_id}", dependencies=[Depends(authenticate)])

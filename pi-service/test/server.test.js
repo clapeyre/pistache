@@ -6,6 +6,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, loadContext, readCallerKey } from "../src/server.js";
 
+test('saved profile is used on the very next request and profile routes require auth', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pistache-profile-live-test-'));
+  writeFileSync(join(dir, 'USER.md'), 'Before');
+  try {
+    await withServer({ contextDir: dir, editable: true, apiKey: 'synthetic-access', respond: async ({ systemPrompt }) => ({ text: systemPrompt.includes('After') ? 'new profile' : 'old profile' }) }, async url => {
+      assert.equal((await fetch(`${url}/v1/parents/context`)).status, 401);
+      const headers = { authorization: 'Bearer synthetic-access', 'content-type': 'application/json' };
+      const files = (await (await fetch(`${url}/v1/parents/context`, { headers })).json()).files;
+      const revision = files.find(file => file.name === 'USER.md').revision;
+      const saved = await fetch(`${url}/v1/parents/context/USER.md`, { method: 'PUT', headers, body: JSON.stringify({ content: 'After', revision }) });
+      assert.equal(saved.status, 200);
+      const response = await fetch(`${url}/v1/chat/completions`, { method: 'POST', headers, body: JSON.stringify({ messages: [{ role: 'user', content: 'Bonjour' }] }) });
+      assert.equal((await response.json()).choices[0].message.content, 'new profile');
+    });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 async function withServer(options, fn) {
   const server = createServer(options);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));

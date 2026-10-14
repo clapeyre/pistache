@@ -16,8 +16,6 @@ deployment plumbing taken out. It’s a hobby project, still finding its feet.
 - A **Pi service**: uses the Pi agent runtime, with just two tools:
   `show_word` displays a word and its letters; `calculate` handles simple arithmetic.
   Pi’s usual shell and filesystem tools are disabled.
-- A separate adult recorder page for collecting your own test phrases locally.
-  It doesn’t send those recordings to the chat service.
 
 ```text
 Browser → Python bridge → Pi service → Bifrost → chat model
@@ -73,7 +71,7 @@ example local rather than opening its port to the internet.
 
 `examples/context/` contains a generic persona and profile. Copy those files into
 `local/context/`, edit them, and set `CONTEXT_DIR=./local/context` in `.env`.
-The profile is read-only at runtime. Pi's conversation context lives in RAM;
+The example profile is read-only by default. Pi's conversation context lives in RAM;
 there’s no persistent learning or memory-writing feature yet. The separate parent
 journal below keeps a record to look back on, without feeding it back into Pi.
 
@@ -103,11 +101,37 @@ rest of Pistache. Anyone who can reach your private site can read or erase the
 journal, including a child using that site. Keep it behind that private access.
 Text, keys and recordings still stay out of Git; SQLite files are ignored too.
 
-Actual voice turns go to the configured models. The adult recorder page is separate:
-it keeps its clips and manual transcripts in that browser’s IndexedDB until you
-export or delete them. Browser storage can disappear, so export anything you want
-to keep. Please keep your own recordings, profiles and keys out of Git; `local/`,
-secrets, audio exports and backups are ignored here.
+The **Fonctionnement** tab includes charts for exchange count, average/P95 latency
+and reported chat cost over 24 hours, 7 days or 30 days. They use all retained
+journal entries, rather than just the latest 200 shown in the conversation list.
+Time buckets are UTC hours/days, with labels displayed in your browser's time zone.
+An exchange can involve several chat requests when Pi calls tools: costs are summed
+only when each request reports one. Missing costs stay unknown. Speech/transcription
+charges aren't included, and Pi's placeholder model prices aren't used. This is
+a view of reported chat charges, not your whole gateway bill.
+
+The **Profil** tab shows `USER.md`, `SOUL.md`, `SYSTEM.md`, and optional `MEMORY.md`
+and `profile.json`. To enable editing for your own local files, copy the examples
+to `local/context/` and set these in `.env`:
+
+```dotenv
+CONTEXT_DIR=./local/context
+CONTEXT_EDITABLE=true
+CONTEXT_MOUNT_MODE=rw
+```
+
+Recreate the services with `docker compose up -d --build`. The person running the
+Pi service needs write access to that directory. For native runs, set `CONTEXT_DIR`
+and `CONTEXT_EDITABLE=true` on the Pi service. Saves take effect on the next reply;
+there's no restart needed for each edit. A revision check catches overlapping
+edits, and only the named profile files can be changed. Fixed tool and safety rules
+remain outside these files. Enabling editing gives everyone with private-site
+access the same edit access, as with the rest of the parent page.
+
+Actual voice turns go to the configured models. Keep your own recordings, profiles
+and keys out of Git; `local/`, secrets, audio exports and backups are ignored here.
+The old standalone benchmark recorder has been retired. Removing its page doesn't
+erase any clips that an earlier installation left in your browser's storage.
 
 ## Why Bifrost? Could I use something else?
 
